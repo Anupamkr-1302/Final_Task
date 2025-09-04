@@ -26,31 +26,27 @@ jobs:
       - name: Pull base image
         run: docker pull nginx:latest
 
-      # Only log in if secrets are present
-      - name: Log in to Docker Hub (if secrets exist)
-        if: ${{ secrets.DOCKER_HUB_USERNAME != '' && secrets.DOCKER_HUB_PASSWORD != '' }}
-        uses: docker/login-action@v2
-        with:
-          username: ${{ secrets.DOCKER_HUB_USERNAME }}
-          password: ${{ secrets.DOCKER_HUB_PASSWORD }}
-
-      # Only retag if we have a username
-      - name: Prepare container image (retag)
-        if: ${{ secrets.DOCKER_HUB_USERNAME != '' }}
+      # Login, retag, and push ONLY if secrets are present.
+      - name: Login & push (conditional)
+        id: push
+        env:
+          DOCKER_HUB_USERNAME: ${{ secrets.DOCKER_HUB_USERNAME }}
+          DOCKER_HUB_PASSWORD: ${{ secrets.DOCKER_HUB_PASSWORD }}
         run: |
-          docker tag nginx:latest ${{ secrets.DOCKER_HUB_USERNAME }}/hello-cicd:latest
-          echo "Retagged as ${{ secrets.DOCKER_HUB_USERNAME }}/hello-cicd:latest"
+          if [ -n "$DOCKER_HUB_USERNAME" ] && [ -n "$DOCKER_HUB_PASSWORD" ]; then
+            echo "$DOCKER_HUB_PASSWORD" | docker login -u "$DOCKER_HUB_USERNAME" --password-stdin
+            docker tag nginx:latest "$DOCKER_HUB_USERNAME/hello-cicd:latest"
+            docker push "$DOCKER_HUB_USERNAME/hello-cicd:latest"
+            echo "pushed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Secrets missing; skipping Docker Hub push."
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
+          fi
 
-      # Only push if both secrets exist
-      - name: Push image to Docker Hub
-        if: ${{ secrets.DOCKER_HUB_USERNAME != '' && secrets.DOCKER_HUB_PASSWORD != '' }}
-        run: docker push ${{ secrets.DOCKER_HUB_USERNAME }}/hello-cicd:latest
-
-      # Friendly summary so the job still shows green
       - name: Summary
         run: |
-          if [ -z "${{ secrets.DOCKER_HUB_USERNAME }}" ] || [ -z "${{ secrets.DOCKER_HUB_PASSWORD }}" ]; then
-            echo "⚠️ Skipped Docker Hub login/push because secrets are missing or empty."
-          else
+          if [ "${{ steps.push.outputs.pushed }}" = "true" ]; then
             echo "✅ Image pushed to Docker Hub."
+          else
+            echo "⚠️ Skipped Docker Hub login/push because secrets were missing."
           fi
