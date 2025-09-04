@@ -1,0 +1,8 @@
+version: "3.8"
+
+services:
+  web:
+    image: your-dockerhub-username/hello-cicd:latest
+    container_name: hello_cicd_app
+    ports:
+      - "3000:80"
